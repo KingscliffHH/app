@@ -1,0 +1,25 @@
+# version: '3.8'
+services:
+  proxy:
+    image: nginx
+    container_name: proxy
+    ports:
+      - "80:80"
+    volumes:
+      - /var/app/current/proxy/conf.d:/etc/nginx/conf.d:ro
+    links: [ api, web ]
+    depends_on: [ api, web ]
+  api:
+    image: "api"
+    container_name: api
+    ports:
+      - "8000:8000"
+    env_file:
+      - /tmp/.env
+  web:
+    image: httpd:2.4
+    container_name: web
+    ports:
+      - "8080:80"
+    env_file:
+      - /tmp/.env

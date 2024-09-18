@@ -1,0 +1,312 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS CloudFormation template for a VPC with a single public subnet and Internet Gateway."
+
+Parameters:
+  StackEnv:
+    Type: String
+    Default: "dev"
+    AllowedValues:
+      - innov
+      - dev
+      - test
+      - prod
+  SolutionStackName:
+    Type: String
+    Default: "64bit Amazon Linux 2023 v4.2.1 running Docker"
+    Description: Elastic Beanstalk solution stack name
+  MongoDBURI:
+    Type: String
+    Description: MongoDB URI
+  MongoDBPrivateEndpointID:
+    Type: String
+    Description: MongoDB Atlas private endpoint ID
+  Auth0AppDomain:
+    Type: String
+    Description: Auth0 App domain
+  Auth0AppClientID:
+    Type: String
+    Description: Auth0 App client ID
+  Auth0AppAudience:
+    Type: String
+    Description: Auth0 App audience
+  Auth0ApiDomain:
+    Type: String
+    Description: Auth0 Api domain
+  Auth0ApiClientID:
+    Type: String
+    Description: Auth0 Api client ID
+  Auth0ApiClientSecret:
+    Type: String
+    Description: Auth0 Api client Secret
+  Auth0ApiAudience:
+    Type: String
+    Description: Auth0 Api audience
+
+Resources:
+  MyVPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub vpc-${AWS::StackName}
+
+  MyInternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub igw-${AWS::StackName}
+
+  AttachGateway:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  MyPublicSubnet01:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub subnet-public-01-${AWS::StackName}
+      # AvailabilityZone: !Select [0, !GetAZs ""]
+
+  MyRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub rtb-${AWS::StackName}
+
+  MyRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref MyRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref MyInternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref MyPublicSubnet01
+      RouteTableId: !Ref MyRouteTable
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Elastic Beanstalk environment
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 # Allow HTTP traffic from anywhere
+        - IpProtocol: tcp
+          FromPort: 27017
+          ToPort: 27017
+          CidrIp: 10.0.0.0/16 # Allow Mongo traffic from VPC
+
+  # VPC Endpoint for Atlas MongoDB
+  VPCEndpoint:
+    Type: "AWS::EC2::VPCEndpoint"
+    Properties:
+      VpcId: !Ref MyVPC
+      SubnetIds:
+        - !Ref MyPublicSubnet01
+      SecurityGroupIds:
+        - !Ref MySecurityGroup
+      ServiceName: !Sub com.amazonaws.vpce.${AWS::Region}.${MongoDBPrivateEndpointID}
+      VpcEndpointType: Interface
+
+  MyInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref MyElasticBeanstalkRole
+
+  MyElasticBeanstalkRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ec2.amazonaws.com]
+            Action: ["sts:AssumeRole"]
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  MyApplication:
+    Type: "AWS::ElasticBeanstalk::Application"
+    Properties:
+      ApplicationName: "dashboard-app"
+
+  MyS3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub
+        - "dashboard-media-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: ObjectWriter
+
+  MyS3BucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref MyS3Bucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${MyS3Bucket}/*"
+
+  # MyApplicationVersion:
+  #   Type: AWS::ElasticBeanstalk::ApplicationVersion
+  #   Properties:
+  #     ApplicationName: !Ref MyApplication
+  #     Description: "Initial version using AWS's sample Docker application"
+  #     SourceBundle:
+  #       S3Bucket: !Sub "infinities-eb-sample"
+  #       S3Key: "docker-sample.zip"
+
+  MyConfigurationTemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName: !Ref MyApplication
+      SolutionStackName: !Ref SolutionStackName
+      OptionSettings:
+        - Namespace: aws:ec2:vpc
+          OptionName: VPCId
+          Value: !Ref MyVPC
+        - Namespace: aws:ec2:vpc
+          OptionName: Subnets
+          Value: !Ref MyPublicSubnet01
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: !Ref MySecurityGroup
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref MyInstanceProfile
+
+  MyMongoDBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "dashboard-app-${StackEnv}-mongodb"
+      Description: "MongoDB connection string"
+      SecretString: !Sub |
+        {
+          "mongodburi": "${MongoDBURI}",
+          "dbname": "dashboard-app-${StackEnv}"
+        }
+
+  MyElasticBeanstalkEnvironment:
+    Type: "AWS::ElasticBeanstalk::Environment"
+    DependsOn: MyMongoDBSecret
+    Properties:
+      ApplicationName: !Ref MyApplication
+      TemplateName: !Ref MyConfigurationTemplate
+      # VersionLabel: !Ref MyApplicationVersion
+      EnvironmentName: !Sub "dashboard-app-${StackEnv}"
+      OptionSettings:
+        # - Namespace: aws:autoscaling:launchconfiguration
+        #   OptionName: EC2KeyName
+        #   Value: "infinities-innov-levi"
+        # get from created secret
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: MONGODB_URI
+          Value: !Sub "{{resolve:secretsmanager:${MyMongoDBSecret}:SecretString:mongodburi}}"
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: MONGODB_NAME
+          Value: !Sub "{{resolve:secretsmanager:${MyMongoDBSecret}:SecretString:dbname}}"
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: AUTH0_APP_DOMAIN
+          Value: !Ref Auth0AppDomain
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: AUTH0_APP_CLIENT_ID
+          Value: !Ref Auth0AppClientID
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: AUTH0_APP_AUDIENCE
+          Value: !Ref Auth0AppAudience
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: AUTH0_API_DOMAIN
+          Value: !Ref Auth0ApiDomain
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: AUTH0_API_CLIENT_ID
+          Value: !Ref Auth0ApiClientID
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: AUTH0_API_CLIENT_SECRET
+          Value: !Ref Auth0ApiClientSecret
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: AUTH0_API_AUDIENCE
+          Value: !Ref Auth0ApiAudience
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: S3_BUCKET
+          Value: !Ref MyS3Bucket
+
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      EmptyOnDelete: true
+      ImageTagMutability: IMMUTABLE
+      RepositoryName: infinities/dashboard-app
+
+  ECRRepositoryWeb:
+    Type: AWS::ECR::Repository
+    Properties:
+      EmptyOnDelete: true
+      ImageTagMutability: IMMUTABLE
+      RepositoryName: infinities/dashboard-web
+
+Outputs:
+  EndpointURL:
+    Description: URL of the deployed Elastic Beanstalk application
+    Value: !Sub "http://${MyElasticBeanstalkEnvironment.EndpointURL}"
+    Export:
+      Name: !Sub "${AWS::StackName}-EndpointURL"
+  ApplicationName:
+    Description: The name of the Elastic Beanstalk application
+    Value: !Ref MyApplication
+  EnvironmentName:
+    Description: The name of the Elastic Beanstalk environment
+    Value: !Ref MyElasticBeanstalkEnvironment
+  ECRRepositoryApi:
+    Description: The name of the ECR repository
+    Value: !GetAtt ECRRepository.RepositoryUri
+  ECRRepositoryWeb:
+    Description: The name of the ECR repository
+    Value: !GetAtt ECRRepositoryWeb.RepositoryUri
+  MyVPC:
+    Description: The ID of the VPC
+    Value: !Ref MyVPC
+  MyPublicSubnet01:
+    Description: The ID of the public subnet
+    Value: !Ref MyPublicSubnet01
+  VPCEndpoint:
+    Description: The ID of the VPC endpoint. Use this to connect to MongoDB Atlas
+    Value: !Ref VPCEndpoint
