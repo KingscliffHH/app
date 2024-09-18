@@ -32,7 +32,7 @@ async function loadConfig() {
     const config = await response.json();
     return config;
   } catch (error) {
-    console.error("Failed to load configuration:", error);
+    console.error("Failed to load configuration: Please try again", error);
     throw new Error("Configuration loading failed");
   }
 }
