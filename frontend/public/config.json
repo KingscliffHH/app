@@ -1,0 +1,7 @@
+{
+  "auth0": {
+    "domain": "$AUTH0_APP_DOMAIN",
+    "clientId": "$AUTH0_APP_CLIENT_ID",
+    "audience": "$AUTH0_APP_AUDIENCE"
+  }
+}
