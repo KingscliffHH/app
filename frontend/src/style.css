@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+body {
+    padding: 0;
+    margin: 0;
+    font-size: 16px;
+    font-family: "Roboto", sans-serif;
+  }
+
+  #app {
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* TODO: Vuetify adds that shit */
+  html {
+    overflow-y: auto;
+  }
+
+  /* TODO: Put somewhere */
+  .card-title {
+    font-size: 18px;
+    color: #4d4d4d;
+  }
+
+  .card-subtitle {
+    font-size: 14px;
+    color: #4d4d4d;
+  }
