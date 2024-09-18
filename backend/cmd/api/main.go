@@ -5,13 +5,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/Infinities-ICT-Solutions/project-dashboard/config"
+	"github.com/KingscliffHH/app/config"
 
-	// "github.com/Infinities-ICT-Solutions/project-dashboard/internal/api/healthcheck"
-	"github.com/Infinities-ICT-Solutions/project-dashboard/internal/api/handlers"
-	"github.com/Infinities-ICT-Solutions/project-dashboard/internal/auth"
-	"github.com/Infinities-ICT-Solutions/project-dashboard/internal/storage"
-	"github.com/Infinities-ICT-Solutions/project-dashboard/pkg/shutdown"
+	// "github.com/KingscliffHH/app/internal/api/healthcheck"
+	"github.com/KingscliffHH/app/internal/api/handlers"
+	"github.com/KingscliffHH/app/internal/auth"
+	"github.com/KingscliffHH/app/internal/storage"
+	"github.com/KingscliffHH/app/pkg/shutdown"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
