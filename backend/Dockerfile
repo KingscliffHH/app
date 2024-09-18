@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
     -o myapp \
-    -ldflags="-X 'github.com/Infinities-ICT-Solutions/project-dashboard/pkg/version.Version=${VERSION}'" \
+    -ldflags="-X 'github.com/KingscliffHH/app/pkg/version.Version=${VERSION}'" \
     cmd/api/main.go
 
 FROM alpine:latest
